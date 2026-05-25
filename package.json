@@ -1,5 +1,5 @@
 {
-  "name": "xmcp-scalekit-test",
+  "name": "xmcp-scalekit-example",
   "private": true,
   "scripts": {
     "dev": "xmcp dev",

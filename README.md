@@ -1,38 +1,58 @@
-# xmcp + Scalekit Example
+# xmcp + Scalekit OAuth Example
 
-A working MCP server built with [xmcp](https://xmcp.dev) and authenticated using [Scalekit](https://scalekit.com) as the OAuth 2.1 authorization server.
+A working MCP server built with [xmcp](https://xmcp.dev) and secured with [Scalekit](https://scalekit.com) OAuth 2.1 authorization.
 
-This demonstrates the full MCP OAuth 2.1 flow:
+## What this does
 
-1. MCP client discovers the server's auth requirements via `/.well-known/oauth-protected-resource`
-2. Client registers dynamically with Scalekit (DCR)
-3. User authenticates through Scalekit's OAuth flow (Authorization Code + PKCE)
-4. Client sends Bearer tokens to the MCP server
-5. Server verifies tokens using Scalekit's JWKS keys
+- Serves an MCP server over Streamable HTTP at `/mcp`
+- Validates Bearer tokens issued by Scalekit using JWKS
+- Exposes OAuth discovery endpoints for MCP clients to connect automatically
+- Provides two demo tools (`whoami`, `greet`) that use the authenticated session
 
-## What's included
+## Project structure
 
 | File | Purpose |
 |------|---------|
-| `src/lib/scalekit-auth.ts` | Auth provider: JWT verification, discovery endpoints, session context |
-| `src/middleware.ts` | Wires the provider into xmcp |
-| `src/tools/whoami.ts` | Tool that returns the authenticated user's session |
-| `src/tools/greet.ts` | Tool that greets the user by name using their identity |
+| `src/lib/scalekit-auth.ts` | Auth provider: JWKS verification, OAuth discovery endpoints, session context |
+| `src/middleware.ts` | Wires the Scalekit provider into xmcp as middleware |
+| `src/tools/whoami.ts` | Returns the authenticated user's session info |
+| `src/tools/greet.ts` | Greets the user using their identity from the JWT |
+| `xmcp.config.ts` | Enables Streamable HTTP transport |
+
+## Prerequisites
+
+- Node.js 18+
+- A [Scalekit](https://app.scalekit.com) account with an MCP server configured
 
 ## Setup
 
 ### 1. Get Scalekit credentials
 
 1. Go to the [Scalekit Dashboard](https://app.scalekit.com)
-2. Navigate to **MCP Auth** and register a new MCP server resource
-3. Copy your environment URL, client ID, and client secret
+2. Navigate to your environment and find **MCP Servers**
+3. Create or select an MCP server — note the **Resource ID** shown below the server name (e.g. `res_...`)
+4. Set the **Server URL** to `http://localhost:3001`
+5. Ensure **Allow dynamic client registration** is checked
+6. Copy your **Environment URL**, **Client ID**, and **Client Secret**
 
 ### 2. Configure environment
 
 ```bash
 cp .env.example .env
-# Edit .env with your Scalekit credentials
 ```
+
+Edit `.env` with your credentials:
+
+```env
+SCALEKIT_ENVIRONMENT_URL=https://your-env.scalekit.com
+SCALEKIT_CLIENT_ID=skc_...
+SCALEKIT_CLIENT_SECRET=skcs_...
+SCALEKIT_RESOURCE_ID=res_...
+BASE_URL=http://localhost:3001
+PORT=3001
+```
+
+> **Important:** `SCALEKIT_RESOURCE_ID` is required. Without it, the server cannot advertise the `registration_endpoint` needed for Dynamic Client Registration (DCR), and MCP clients like Claude Desktop or Cursor will fail to connect.
 
 ### 3. Install and run
 
@@ -41,61 +61,74 @@ npm install
 npm run dev
 ```
 
-The server starts on `http://localhost:3002`.
+The server starts at `http://localhost:3001/mcp`.
 
-## Testing the endpoints
+## Test with MCP Inspector
 
-### Discovery metadata
+1. Open [MCP Inspector](https://inspector.tools.modelcontextprotocol.io) or run `npx @modelcontextprotocol/inspector`
+
+2. Configure the connection:
+   - **Transport type:** Streamable HTTP
+   - **URL:** `http://localhost:3001/mcp`
+   - **Connection type:** Direct
+
+3. Get an access token (client credentials):
+
+   ```bash
+   curl -X POST "$SCALEKIT_ENVIRONMENT_URL/oauth/token" \
+     -H "Content-Type: application/x-www-form-urlencoded" \
+     -d "grant_type=client_credentials&client_id=$SCALEKIT_CLIENT_ID&client_secret=$SCALEKIT_CLIENT_SECRET"
+   ```
+
+4. In MCP Inspector, enable the **Authorization** custom header and set it to `Bearer <token>`
+
+5. Click **Connect** — you should see `whoami` and `greet` in the Tools tab
+
+## Test with curl
 
 ```bash
-# Protected resource metadata (tells MCP clients where to authenticate)
-curl http://localhost:3002/.well-known/oauth-protected-resource
+# Get a token
+TOKEN=$(curl -s -X POST "$SCALEKIT_ENVIRONMENT_URL/oauth/token" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "grant_type=client_credentials&client_id=$SCALEKIT_CLIENT_ID&client_secret=$SCALEKIT_CLIENT_SECRET" \
+  | jq -r .access_token)
 
-# Authorization server metadata (proxied from Scalekit)
-curl http://localhost:3002/.well-known/oauth-authorization-server
+# Call the MCP server
+curl -X POST http://localhost:3001/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"jsonrpc":"2.0","method":"tools/list","id":1}'
 ```
 
-### Auth challenge
+## Test with Claude Desktop / Cursor
+
+MCP clients that support OAuth 2.1 handle the full flow automatically:
+
+1. Client POSTs to `/mcp` and gets a `401` with a `WWW-Authenticate` header
+2. Client fetches `/.well-known/oauth-protected-resource` to find the authorization server
+3. Client fetches `/.well-known/oauth-authorization-server` to get the `registration_endpoint`
+4. Client registers itself via DCR and starts the Authorization Code + PKCE flow
+5. User authenticates through Scalekit, client receives a token
+6. Client sends authenticated requests to `/mcp`
+
+For Claude Code:
 
 ```bash
-# Request without token → 401 with WWW-Authenticate header
-curl -v -X POST http://localhost:3002/mcp \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","method":"tools/list","id":1}'
-
-# Request with invalid token → 401 invalid_token
-curl -v -X POST http://localhost:3002/mcp \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer invalid-token" \
-  -d '{"jsonrpc":"2.0","method":"tools/list","id":1}'
+claude mcp add --transport http xmcp-server http://localhost:3001/mcp
 ```
-
-### With a real MCP client
-
-Connect any MCP client that supports OAuth 2.1 (Claude Desktop, Cursor, etc.) to `http://localhost:3002/mcp`. The client will handle the full OAuth flow automatically.
 
 ## How the auth works
 
-The `scalekitProvider()` function returns an xmcp `Middleware` object with:
+`scalekitProvider()` returns an xmcp `Middleware` with two parts:
 
-- **`router`** — serves `/.well-known/oauth-protected-resource` and `/.well-known/oauth-authorization-server`
-- **`middleware`** — intercepts `/mcp` requests, validates Bearer tokens via JWKS, and sets up the session context
+- **`router`** — serves `/.well-known/oauth-protected-resource` (RFC 9728) and `/.well-known/oauth-authorization-server` (RFC 8414), proxied from Scalekit
+- **`middleware`** — validates Bearer tokens on `/mcp` requests using Scalekit's JWKS keys, then sets up the session context
 
-Tools access the authenticated user via `getSession()` which returns:
-
-```typescript
-{
-  userId: string;       // JWT sub claim
-  scopes: string[];     // from JWT scope claim
-  organizationId?: string; // from JWT org_id claim
-  expiresAt: Date;
-  issuedAt: Date;
-  claims: JWTClaims;    // full JWT payload
-}
-```
+Tools access the authenticated user via `getSession()` from `src/lib/scalekit-auth.ts`.
 
 ## Related
 
 - [xmcp documentation](https://xmcp.dev/docs)
-- [Scalekit MCP Auth docs](https://docs.scalekit.com/mcp)
-- [MCP OAuth 2.1 spec](https://modelcontextprotocol.io/specification/2025-03-26/basic/authorization)
+- [Scalekit MCP Auth quickstart](https://docs.scalekit.com/authenticate/mcp/quickstart)
+- [MCP Authorization spec](https://modelcontextprotocol.io/specification/2025-03-26/basic/authorization)
