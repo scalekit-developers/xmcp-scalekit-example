@@ -1,0 +1,21 @@
+{
+  "name": "xmcp-scalekit-test",
+  "private": true,
+  "scripts": {
+    "dev": "xmcp dev",
+    "build": "xmcp build",
+    "start": "node dist/http.js"
+  },
+  "dependencies": {
+    "xmcp": "^0.6.10",
+    "@scalekit-sdk/node": "^2.6.2",
+    "jose": "^5.2.0",
+    "express": "^4.22.1",
+    "zod": "^4.0.10"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.25",
+    "@types/node": "^22.19.2",
+    "typescript": "^5.9.3"
+  }
+}
