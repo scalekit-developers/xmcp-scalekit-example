@@ -173,24 +173,30 @@ export function scalekitProvider(config: ScalekitConfig): Middleware {
     ? `${envUrl}/resources/${config.resourceId}`
     : envUrl;
 
-  // Pre-fetch JWKS URI from OIDC discovery
+  // Pre-fetch JWKS URI — try OAuth AS metadata first, then OIDC discovery
   let resolvedJwksUri: URL | null = null;
   (async () => {
     try {
-      const oidcUrl = `${authServerBase}/.well-known/openid-configuration`;
-      const response = await fetch(oidcUrl);
-      if (response.ok) {
-        const oidcConfig = await response.json();
-        if (oidcConfig.jwks_uri) {
-          resolvedJwksUri = new URL(oidcConfig.jwks_uri);
-          console.log(
-            "[Scalekit] Resolved JWKS URI:",
-            resolvedJwksUri.toString()
-          );
+      const urls = [
+        `${authServerBase}/.well-known/oauth-authorization-server`,
+        `${authServerBase}/.well-known/openid-configuration`,
+      ];
+      for (const url of urls) {
+        const response = await fetch(url);
+        if (response.ok) {
+          const meta = (await response.json()) as { jwks_uri?: string };
+          if (meta.jwks_uri) {
+            resolvedJwksUri = new URL(meta.jwks_uri);
+            console.log(
+              "[Scalekit] Resolved JWKS URI:",
+              resolvedJwksUri.toString()
+            );
+            return;
+          }
         }
       }
     } catch (e) {
-      console.warn("[Scalekit] Could not pre-fetch OIDC config:", e);
+      console.warn("[Scalekit] Could not pre-fetch JWKS URI:", e);
     }
   })();
 
@@ -225,6 +231,15 @@ function buildRouter(config: ScalekitConfig, authServerBase: string): Router {
     "/.well-known/oauth-authorization-server",
     async (_req: Request, res: Response) => {
       try {
+        // Try OAuth AS metadata first (required for resource-specific paths with DCR),
+        // then fall back to OIDC discovery
+        const asUrl = `${authServerBase}/.well-known/oauth-authorization-server`;
+        const asResponse = await fetch(asUrl);
+        if (asResponse.ok) {
+          const data = await asResponse.json();
+          res.json(data);
+          return;
+        }
         const oidcUrl = `${authServerBase}/.well-known/openid-configuration`;
         const response = await fetch(oidcUrl);
         if (response.ok) {
@@ -286,13 +301,10 @@ function buildMiddleware(
 
       const jwksUrl =
         getJwksUri() || new URL(`${authServerBase}/.well-known/jwks`);
-      const audience = config.resourceId || config.baseURL.replace(/\/$/, "");
-
       const result = await verifyScalekitToken(
         token,
         jwksUrl,
-        authServerBase,
-        audience
+        config.environmentUrl.replace(/\/$/, "")
       );
 
       if (!result.ok) {
