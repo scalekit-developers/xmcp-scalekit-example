@@ -8,9 +8,9 @@ export const metadata: ToolMetadata = {
     "List notes saved by the authenticated user. Each user only sees their own notes.",
 };
 
-export default function listMyNotes(): string {
+export default async function listMyNotes(): Promise<string> {
   const session = getSession();
-  const notes = listNotes(session.userId);
+  const notes = await listNotes(session.userId);
 
   return JSON.stringify(
     {

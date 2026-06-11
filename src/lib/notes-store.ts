@@ -1,4 +1,4 @@
-import fs from "fs";
+import fs from "fs/promises";
 import path from "path";
 
 export interface Note {
@@ -13,28 +13,58 @@ interface NotesFile {
 
 const DATA_DIR = path.join(process.cwd(), ".data");
 const NOTES_PATH = path.join(DATA_DIR, "notes.json");
+const NOTES_TMP_PATH = `${NOTES_PATH}.tmp`;
 
-function readStore(): NotesFile {
-  if (!fs.existsSync(NOTES_PATH)) {
-    return {};
+function isNote(value: unknown): value is Note {
+  if (!value || typeof value !== "object") {
+    return false;
   }
 
-  const raw = fs.readFileSync(NOTES_PATH, "utf8");
-  return JSON.parse(raw) as NotesFile;
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.id === "string" &&
+    typeof record.content === "string" &&
+    typeof record.createdAt === "string"
+  );
 }
 
-function writeStore(store: NotesFile): void {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-  fs.writeFileSync(NOTES_PATH, JSON.stringify(store, null, 2));
+function isNotesFile(value: unknown): value is NotesFile {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+
+  return Object.values(value).every(
+    (notes) => Array.isArray(notes) && notes.every(isNote)
+  );
 }
 
-export function listNotes(userId: string): readonly Note[] {
-  const store = readStore();
+async function readStore(): Promise<NotesFile> {
+  try {
+    const raw = await fs.readFile(NOTES_PATH, "utf8");
+    const parsed: unknown = JSON.parse(raw);
+    return isNotesFile(parsed) ? parsed : {};
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return {};
+    }
+
+    return {};
+  }
+}
+
+async function writeStore(store: NotesFile): Promise<void> {
+  await fs.mkdir(DATA_DIR, { recursive: true });
+  await fs.writeFile(NOTES_TMP_PATH, JSON.stringify(store, null, 2), "utf8");
+  await fs.rename(NOTES_TMP_PATH, NOTES_PATH);
+}
+
+export async function listNotes(userId: string): Promise<readonly Note[]> {
+  const store = await readStore();
   return store[userId] ?? [];
 }
 
-export function saveNote(userId: string, content: string): Note {
-  const store = readStore();
+export async function saveNote(userId: string, content: string): Promise<Note> {
+  const store = await readStore();
   const note: Note = {
     id: crypto.randomUUID(),
     content,
@@ -42,7 +72,7 @@ export function saveNote(userId: string, content: string): Note {
   };
 
   const existing = store[userId] ?? [];
-  writeStore({
+  await writeStore({
     ...store,
     [userId]: [...existing, note],
   });

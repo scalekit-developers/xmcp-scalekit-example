@@ -13,11 +13,11 @@ export const metadata: ToolMetadata = {
     "Save a note for the authenticated user. Notes are scoped to the JWT sub claim.",
 };
 
-export default function saveNoteTool({
+export default async function saveNoteTool({
   content,
-}: InferSchema<typeof schema>): string {
+}: InferSchema<typeof schema>): Promise<string> {
   const session = getSession();
-  const note = saveNote(session.userId, content);
+  const note = await saveNote(session.userId, content);
 
   return JSON.stringify(
     {
