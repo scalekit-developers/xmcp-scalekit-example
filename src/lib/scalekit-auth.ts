@@ -30,11 +30,16 @@ export interface JWTClaims {
   readonly scope?: string;
   readonly sid?: string;
   readonly org_id?: string;
+  readonly oid?: string;
+  readonly permissions?: readonly string[];
+  readonly roles?: readonly string[];
 }
 
 export interface Session {
   readonly userId: string;
   readonly scopes: readonly string[];
+  readonly permissions: readonly string[];
+  readonly roles: readonly string[];
   readonly organizationId?: string;
   readonly expiresAt: Date;
   readonly issuedAt: Date;
@@ -124,12 +129,21 @@ async function verifyScalekitToken(
   }
 }
 
+function normalizeStringArray(value: unknown): readonly string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((item): item is string => typeof item === "string");
+}
+
 function claimsToSession(claims: JWTClaims): Session {
   const scopes = claims.scope ? claims.scope.split(" ") : [];
   return {
     userId: claims.sub,
     scopes,
-    organizationId: claims.org_id,
+    permissions: normalizeStringArray(claims.permissions),
+    roles: normalizeStringArray(claims.roles),
+    organizationId: claims.org_id ?? claims.oid,
     expiresAt: new Date(claims.exp * 1000),
     issuedAt: new Date(claims.iat * 1000),
     claims,

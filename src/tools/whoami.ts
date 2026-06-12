@@ -3,7 +3,8 @@ import { getSession } from "../lib/scalekit-auth";
 
 export const metadata: ToolMetadata = {
   name: "whoami",
-  description: "Returns the full Scalekit user session information",
+  description:
+    "Returns the authenticated MCP user session. userId is the JWT sub claim from Scalekit.",
 };
 
 export default function whoami(): string {
@@ -12,6 +13,8 @@ export default function whoami(): string {
   const info = {
     userId: session.userId,
     scopes: session.scopes,
+    permissions: session.permissions,
+    roles: session.roles,
     organizationId: session.organizationId || "N/A",
     expiresAt: session.expiresAt.toISOString(),
     issuedAt: session.issuedAt.toISOString(),
