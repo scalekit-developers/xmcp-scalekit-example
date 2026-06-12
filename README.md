@@ -21,7 +21,8 @@ Share the **URL only** in MCP client config. Each teammate completes signup or l
 - Validates Bearer tokens issued by Scalekit using JWKS
 - Exposes OAuth discovery endpoints for MCP clients (Cursor, Claude Code, MCP Inspector)
 - Provides per-user notes tools (`save_note`, `list_my_notes`) scoped by JWT `sub`
-- Includes `whoami` to inspect the authenticated session
+- Enforces RBAC permissions (`notes:read`, `notes:write`) when they appear in the access token
+- Includes `whoami` to inspect the authenticated session, roles, and permissions
 
 ## Quick start
 
@@ -90,6 +91,7 @@ The server starts at `http://localhost:3001/mcp`.
 |------|---------|
 | `src/lib/scalekit-auth.ts` | Auth provider: JWKS verification, OAuth discovery endpoints, session context |
 | `src/lib/notes-store.ts` | Per-user notes persistence keyed by JWT `sub` |
+| `src/lib/permissions.ts` | `hasPermission()` helper for RBAC checks in tools |
 | `src/middleware.ts` | Wires the Scalekit provider into xmcp as middleware |
 | `src/tools/whoami.ts` | Returns the authenticated user session (`userId` = JWT `sub`) |
 | `src/tools/save-note.ts` | Saves a note for the current user |
@@ -112,6 +114,43 @@ const session = getSession();
 
 Notes are stored in `.data/notes.json` on the server, keyed by `userId`. In a production app, you would scope database queries, API calls, or file access the same way.
 
+## RBAC permissions (optional)
+
+`userId` scoping answers **whose data is this?** Permissions answer **should this person run this tool?**
+
+| Permission | Tool | Effect |
+| --- | --- | --- |
+| `notes:read` | `list_my_notes` | List the caller's notes |
+| `notes:write` | `save_note` | Save a note for the caller |
+
+### Configure in Scalekit
+
+1. Create permissions `notes:read` and `notes:write` in the Scalekit dashboard ([create roles and permissions](https://docs.scalekit.com/authenticate/authz/create-roles-permissions/)).
+2. Create roles, for example:
+   - **notes-viewer** — `notes:read` only
+   - **notes-editor** — `notes:read` and `notes:write`
+3. Assign roles to members who will connect to this MCP server.
+4. Reconnect MCP clients after role changes so new tokens include updated `permissions` and `roles` claims.
+
+Call `whoami` to confirm the token includes the expected `permissions` and `roles` arrays.
+
+### How enforcement works
+
+```typescript
+import { getSession } from "../lib/scalekit-auth";
+import { hasPermission } from "../lib/permissions";
+
+const session = getSession();
+if (!hasPermission(session, "notes:write")) {
+  return "Missing notes:write permission.";
+}
+```
+
+- `session.scopes` (`openid`, `profile`, `email`) identify the user.
+- `session.permissions` (`notes:write`) control which tools they may run.
+
+If the access token has **no** `permissions` claim, tools allow any authenticated user (per-user isolation still applies). Once Scalekit includes permissions on the token, the server enforces them.
+
 ## Two-user verification
 
 Prove that teammates do not share data:
@@ -123,6 +162,14 @@ Prove that teammates do not share data:
 5. **Bob** connects the same URL with a different Scalekit account
 6. Bob calls `list_my_notes` — sees an empty list (not Alice's note)
 7. Bob calls `save_note` with `"Bob was here"` — only Bob sees it on `list_my_notes`
+
+### Read-only role check (optional)
+
+After you configure RBAC in Scalekit:
+
+1. Assign **notes-viewer** (`notes:read` only) to Carol.
+2. Carol connects, calls `list_my_notes` — succeeds (empty list or her notes).
+3. Carol calls `save_note` — returns `Missing notes:write permission.`
 
 ## Test with MCP Inspector
 

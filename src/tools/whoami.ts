@@ -13,6 +13,8 @@ export default function whoami(): string {
   const info = {
     userId: session.userId,
     scopes: session.scopes,
+    permissions: session.permissions,
+    roles: session.roles,
     organizationId: session.organizationId || "N/A",
     expiresAt: session.expiresAt.toISOString(),
     issuedAt: session.issuedAt.toISOString(),

@@ -1,6 +1,7 @@
 import { type ToolMetadata } from "xmcp";
 import { getSession } from "../lib/scalekit-auth";
 import { listNotes } from "../lib/notes-store";
+import { hasPermission, missingPermissionMessage } from "../lib/permissions";
 
 export const metadata: ToolMetadata = {
   name: "list_my_notes",
@@ -10,6 +11,10 @@ export const metadata: ToolMetadata = {
 
 export default async function listMyNotes(): Promise<string> {
   const session = getSession();
+  if (!hasPermission(session, "notes:read")) {
+    return missingPermissionMessage("notes:read");
+  }
+
   const notes = await listNotes(session.userId);
 
   return JSON.stringify(

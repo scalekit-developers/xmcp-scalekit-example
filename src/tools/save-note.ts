@@ -2,6 +2,7 @@ import { z } from "zod";
 import { type InferSchema, type ToolMetadata } from "xmcp";
 import { getSession } from "../lib/scalekit-auth";
 import { saveNote } from "../lib/notes-store";
+import { hasPermission, missingPermissionMessage } from "../lib/permissions";
 
 export const schema = {
   content: z.string().min(1).describe("Note text to save for the current user"),
@@ -17,6 +18,10 @@ export default async function saveNoteTool({
   content,
 }: InferSchema<typeof schema>): Promise<string> {
   const session = getSession();
+  if (!hasPermission(session, "notes:write")) {
+    return missingPermissionMessage("notes:write");
+  }
+
   const note = await saveNote(session.userId, content);
 
   return JSON.stringify(
