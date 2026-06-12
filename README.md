@@ -116,6 +116,8 @@ Notes are stored in `.data/notes.json` on the server, keyed by `userId`. In a pr
 
 ## RBAC permissions (optional)
 
+**Authentication** establishes identity (`userId`, JWT `sub`). **Authorization** decides which tools someone may run. OAuth sign-in and token validation handle authentication; `permissions` and `roles` in the access token — checked in tool code — handle authorization.
+
 `userId` scoping answers **whose data is this?** Permissions answer **should this person run this tool?**
 
 | Permission | Tool | Effect |
