@@ -1,4 +1,4 @@
-import { scalekitProvider } from "./lib/scalekit-auth";
+import { scalekitProvider } from "@xmcp-dev/scalekit";
 
 export default scalekitProvider({
   environmentUrl: process.env.SCALEKIT_ENVIRONMENT_URL!,

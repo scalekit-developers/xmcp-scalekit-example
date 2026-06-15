@@ -89,10 +89,9 @@ The server starts at `http://localhost:3001/mcp`.
 
 | File | Purpose |
 |------|---------|
-| `src/lib/scalekit-auth.ts` | Auth provider: JWKS verification, OAuth discovery endpoints, session context |
 | `src/lib/notes-store.ts` | Per-user notes persistence keyed by JWT `sub` |
 | `src/lib/permissions.ts` | `hasPermission()` helper for RBAC checks in tools |
-| `src/middleware.ts` | Wires the Scalekit provider into xmcp as middleware |
+| `src/middleware.ts` | Wires the official Scalekit plugin |
 | `src/tools/whoami.ts` | Returns the authenticated user session (`userId` = JWT `sub`) |
 | `src/tools/save-note.ts` | Saves a note for the current user |
 | `src/tools/list-my-notes.ts` | Lists notes for the current user only |
@@ -116,7 +115,7 @@ Notes are stored in `.data/notes.json` on the server, keyed by `userId`. In a pr
 
 ## RBAC permissions (optional)
 
-`userId` scoping answers **whose data is this?** Permissions answer **should this person run this tool?**
+`userId` scoping answers **whose data is this?** Permissions answer **should this person run this tool?** That is an authorization check in tool code.
 
 | Permission | Tool | Effect |
 | --- | --- | --- |
@@ -211,14 +210,21 @@ claude mcp add --transport http xmcp-server http://localhost:3001/mcp
 
 ## How the auth works
 
-`scalekitProvider()` returns an xmcp `Middleware` with two parts:
+The example uses the official `@xmcp-dev/scalekit` plugin:
 
-- **`router`** — serves `/.well-known/oauth-protected-resource` (RFC 9728) and `/.well-known/oauth-authorization-server` (RFC 8414), proxied from Scalekit
-- **`middleware`** — validates Bearer tokens on `/mcp` requests using Scalekit's JWKS keys, then sets up the session context
+```ts
+import { scalekitProvider } from "@xmcp-dev/scalekit";
 
-Tools access the authenticated user via `getSession()` from `src/lib/scalekit-auth.ts`.
+export default scalekitProvider({ ... });
+```
 
-When `@xmcp-dev/scalekit` publishes to npm, you can replace the vendored `scalekit-auth.ts` with the official xmcp plugin.
+The plugin provides:
+
+- The OAuth discovery router (protected resource + authorization server metadata)
+- Bearer token validation middleware using Scalekit JWKS
+- `getSession()` and `getClient()` available inside tools
+
+Per-user scoping and RBAC checks live in the demo-specific helpers (`src/lib/notes-store.ts` and `src/lib/permissions.ts`).
 
 ## Related
 
