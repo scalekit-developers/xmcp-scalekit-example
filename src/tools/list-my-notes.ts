@@ -1,5 +1,5 @@
 import { type ToolMetadata } from "xmcp";
-import { getSession } from "../lib/scalekit-auth";
+import { getSession } from "@xmcp-dev/scalekit";
 import { listNotes } from "../lib/notes-store";
 import { hasPermission, missingPermissionMessage } from "../lib/permissions";
 

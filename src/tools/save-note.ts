@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { type InferSchema, type ToolMetadata } from "xmcp";
-import { getSession } from "../lib/scalekit-auth";
+import { getSession } from "@xmcp-dev/scalekit";
 import { saveNote } from "../lib/notes-store";
 import { hasPermission, missingPermissionMessage } from "../lib/permissions";
 
